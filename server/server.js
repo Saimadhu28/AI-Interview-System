@@ -81,6 +81,11 @@ const userSchema = new mongoose.Schema({
         required: true
     },
 
+    credits: {
+        type: Number,
+        default: 5
+    },
+
     role: {
         type: String,
         default: "user"
@@ -92,6 +97,32 @@ const userSchema = new mongoose.Schema({
 
 
 const userModel = mongoose.model("Users", userSchema);
+// const InterviewSchema = new mongoose.Schema({
+
+//     userId: {
+//         type: mongoose.Schema.Types.ObjectId,
+//         ref: "Users",
+//         required: true
+//     },
+
+//     questions: [
+//         {
+//             id: Number,
+//             question: String,
+//             answer: String,
+//             score: Number,
+//             feedback: String
+//         }
+//     ],
+
+//     totalScore: Number,
+
+//     overallFeedback: String
+
+// }, {
+//     timestamps: true
+// });
+
 const InterviewSchema = new mongoose.Schema({
 
     userId: {
@@ -104,15 +135,36 @@ const InterviewSchema = new mongoose.Schema({
         {
             id: Number,
             question: String,
-            answer: String,
-            score: Number,
-            feedback: String
+            answer: {
+                type: String,
+                default: ""
+            },
+            score: {
+                type: Number,
+                default: 0
+            },
+            feedback: {
+                type: String,
+                default: ""
+            }
         }
     ],
 
-    totalScore: Number,
+    totalScore: {
+        type: Number,
+        default: 0
+    },
 
-    overallFeedback: String
+    overallFeedback: {
+        type: String,
+        default: ""
+    },
+
+    status: {
+        type: String,
+        enum: ["STARTED", "COMPLETED"],
+        default: "STARTED"
+    }
 
 }, {
     timestamps: true
@@ -183,8 +235,8 @@ app.post("/login", async (req, res) => {
         }
         const token = jwt.sign({
             _id: user._id,
-            email: user.email,
-            name: user.name
+            // email: user.email,
+            // name: user.name
         }, process.env.JWT_SECRET);
         return res.json(
             { token }
@@ -197,31 +249,60 @@ app.post("/login", async (req, res) => {
 // dashboard access
 app.get("/dashboard", verifyUser, async (req, res) => {
     try {
-        const user = await userModel.findOne({ _id: req.userid });
-        return res.json({ user: `Hii ${user.name}` });
+        const user = await userModel.findOne({
+    _id: req.userid._id
+});
+        return res.json({
+            user: `Hii ${user.name}`,
+            name: user.name,
+            credits: user.credits
+        });
     }
     catch (error) {
         return res.json({ message: error });
     }
 })
 
-// upload resume
-app.post("/upload", verifyUser, upload.single("image"), async (req, res) => {
-    console.log(req.body);
-    console.log(req.file);
-    const pdfBytes = fs.readFileSync(req.file.path);
-    const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-            {
-                inlineData: {
-                    mimeType: "application/pdf",
-                    data: pdfBytes.toString("base64"),
+
+
+
+
+app.post("/upload", verifyUser, upload.single("resume"), async (req, res) => {
+
+    try {
+
+        // 1. Find user
+        const user = await userModel.findById(req.userid._id);
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        // 2. Check credits
+        if (user.credits <= 0) {
+            return res.status(403).json({
+                message: "No credits remaining. Please purchase credits."
+            });
+        }
+
+        // 3. Read uploaded resume
+        const pdfBytes = fs.readFileSync(req.file.path);
+
+        // 4. Generate questions
+        const result = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [
+                {
+                    inlineData: {
+                        mimeType: "application/pdf",
+                        data: pdfBytes.toString("base64"),
+                    },
                 },
-            },
-            {
-                text: `
-            Read this resume carefully.
+                {
+                    text: `
+Read this resume carefully.
 
 Generate exactly 10 interview questions based only on this resume.
 
@@ -235,33 +316,119 @@ Return ONLY JSON.
       }
    ]
 }
-            `,
-            },
-        ],
-    });
+`
+                }
+            ],
+        });
 
-    let response = result.text;
+        let response = result.text;
 
-    response = response
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
+        response = response
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
 
-    const questions = JSON.parse(response);
+        const questions = JSON.parse(response);
 
-    res.json({
-        success: true,
-        questions: questions.questions
-    });
+        // 5. Create new interview document
+        const interview = await Interview.create({
 
-})
+            userId: user._id,
+
+            questions: questions.questions,
+
+            totalScore: 0,
+
+            overallFeedback: "",
+
+            status: "STARTED"
+
+        });
+
+        // 6. Deduct one credit
+        user.credits -= 1;
+
+        await user.save();
+
+        // 7. Return data to frontend
+        return res.json({
+
+            success: true,
+
+            interviewId: interview._id,
+
+            creditsRemaining: user.credits,
+
+            questions: interview.questions
+
+        });
+
+    } catch (error) {
+
+        console.log(error);
+
+        return res.status(500).json({
+            message: "Something went wrong"
+        });
+
+    }
+
+});
 
 app.post("/evaluate", verifyUser, async (req, res) => {
 
-    const { interview } = req.body;
-    const user = await userModel.findById(req.userid._id);
+    try {
 
-    let prompt = `You are an experienced technical interviewer.
+        const { interviewId, answers } = req.body;
+
+      
+
+        if (!interviewId || !answers || !Array.isArray(answers)) {
+            return res.status(400).json({
+                message: "interviewId and answers are required"
+            });
+        }
+
+        const user = await userModel.findById(req.userid._id);
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const interviewRecord = await Interview.findOne({
+            _id: interviewId,
+            userId: user._id
+        });
+
+        if (!interviewRecord) {
+            return res.status(404).json({
+                message: "Interview not found"
+            });
+        }
+
+        /*
+         * Combine the questions stored in MongoDB
+         * with the answers received from frontend/Postman.
+         */
+
+        const interview = interviewRecord.questions.map((question) => {
+
+           const userAnswer = answers.find(
+                (answer) => answer.id === question.id
+            );
+
+            return {
+                id: question.id,
+                question: question.question,
+                answer: userAnswer ? userAnswer.answer : ""
+            };
+
+        });
+
+
+        let prompt = `You are an experienced technical interviewer.
 
 Evaluate every question and answer carefully.
 
@@ -292,11 +459,14 @@ Format:
   ],
   "totalScore":0,
   "overallFeedback":""
-}`;
+}
 
-    interview.forEach((q) => {
+`;
 
-        prompt += `
+
+        interview.forEach((q) => {
+
+            prompt += `
 
 Question ${q.id}
 ${q.question}
@@ -306,35 +476,42 @@ ${q.answer}
 
 `;
 
-    });
+        });
 
-    const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt
-    });
 
-    let response = result.text;
+        const result = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt
+        });
 
-    response = response
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
 
-    const evaluation = JSON.parse(response);
-    const interviewResult = interview.map((item, index) => ({
+        let response = result.text;
 
-        id: item.id,
+        response = response
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
 
-        question: item.question,
 
-        answer: item.answer,
+        const evaluation = JSON.parse(response);
 
-        score: evaluation.questions[index].score,
 
-        feedback: evaluation.questions[index].feedback
+        const interviewResult = interview.map((item, index) => ({
 
-    }));
-    let mailMessage = `
+            id: item.id,
+
+            question: item.question,
+
+            answer: item.answer,
+
+            score: evaluation.questions[index].score,
+
+            feedback: evaluation.questions[index].feedback
+
+        }));
+
+
+        let mailMessage = `
 <h2>Hello ${user.name},</h2>
 
 <p>Thank you for attending the AI Interview.</p>
@@ -343,9 +520,11 @@ ${q.answer}
 
 <h3>Question-wise Feedback</h3>
 `;
-    evaluation.questions.forEach((q, index) => {
 
-        mailMessage += `
+
+        evaluation.questions.forEach((q, index) => {
+
+            mailMessage += `
         <hr>
 
         <h4>Question ${q.id}</h4>
@@ -362,8 +541,10 @@ ${q.answer}
         <p>${q.feedback}</p>
     `;
 
-    });
-    mailMessage += `
+        });
+
+
+        mailMessage += `
 
 <hr>
 
@@ -376,39 +557,93 @@ ${q.answer}
 <p>Thank you for using the AI Interview System.</p>
 `;
 
-    sendMail(
-        user.email,
-        "AI Interview Evaluation Report",
-        mailMessage
-    );
 
-    await Interview.create({
-
-        userId: user._id,
-
-        questions: interviewResult,
-
-        totalScore: evaluation.totalScore,
-
-        overallFeedback: evaluation.overallFeedback
-
-    });
-
-    const responseData = {
-        questions: evaluation.questions.map((q) => ({
-            id: q.id,
-            score: q.score
-        })),
-        totalScore: evaluation.totalScore
-    };
-
-    return res.json(responseData);
+        sendMail(
+            user.email,
+            "AI Interview Evaluation Report",
+            mailMessage
+        );
 
 
+        /*
+         * Update the existing interview document
+         */
+
+        interviewRecord.questions = interviewResult;
+
+        interviewRecord.totalScore = evaluation.totalScore;
+
+        interviewRecord.overallFeedback =
+            evaluation.overallFeedback;
+
+        interviewRecord.status = "COMPLETED";
+
+
+        await interviewRecord.save();
+
+
+        const responseData = {
+
+            success: true,
+
+            interviewId: interviewId,
+
+            questions: evaluation.questions.map((q) => ({
+
+                id: q.id,
+
+                score: q.score,
+
+                feedback: q.feedback
+
+            })),
+
+            totalScore: evaluation.totalScore,
+
+            overallFeedback: evaluation.overallFeedback
+
+        };
+
+
+        return res.json(responseData);
+
+
+    } catch (error) {
+
+        console.error("Evaluation Error:", error);
+
+        return res.status(500).json({
+            message: "Error evaluating interview",
+            error: error.message
+        });
+
+    }
 
 });
 
 
+app.get("/history", verifyUser, async (req, res) => {
+
+    try {
+
+        const interviews = await Interview.find({
+            userId: req.userid._id
+        }).sort({ createdAt: -1 });
+
+        return res.json({
+            success: true,
+            interviews
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            message: "Failed to fetch interview history"
+        });
+
+    }
+
+});
 
 
 
