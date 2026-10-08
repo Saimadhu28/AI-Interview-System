@@ -97,31 +97,7 @@ const userSchema = new mongoose.Schema({
 
 
 const userModel = mongoose.model("Users", userSchema);
-// const InterviewSchema = new mongoose.Schema({
 
-//     userId: {
-//         type: mongoose.Schema.Types.ObjectId,
-//         ref: "Users",
-//         required: true
-//     },
-
-//     questions: [
-//         {
-//             id: Number,
-//             question: String,
-//             answer: String,
-//             score: Number,
-//             feedback: String
-//         }
-//     ],
-
-//     totalScore: Number,
-
-//     overallFeedback: String
-
-// }, {
-//     timestamps: true
-// });
 
 const InterviewSchema = new mongoose.Schema({
 
