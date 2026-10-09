@@ -199,8 +199,8 @@ app.get("/", (req, res) => {
 app.post("/register", async (req, res) => {
     try {
         const { name, email, password } = req.body;
-        const hashedPasswored = bcrypt.hash(password,10);
-        const user = await userModel.create({ name, email, hashe });
+        const hashedPassword = bcrypt.hash(password,10);
+        const user = await userModel.create({ name, email, hashedPassword });
 
         return res.json({
             message: "User Registerd"
@@ -220,7 +220,7 @@ app.post("/login", async (req, res) => {
         if (!user) {
             return res.json({ message: "User does not exist" });
         }
-        const checkpassword = bcrypt.compare(password,user.password)
+        const checkpassword = await bcrypt.compare(password,user.password)
         if (!checkpassword) {
             return res.json({ message: "Password not matched" });
         }
