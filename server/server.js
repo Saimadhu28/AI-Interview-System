@@ -196,21 +196,61 @@ app.get("/", (req, res) => {
 });
 
 // Regitser
+
 app.post("/register", async (req, res) => {
     try {
         const { name, email, password } = req.body;
-        const hashedPassword = bcrypt.hash(password,10);
-        const user = await userModel.create({ name, email, hashedPassword });
 
-        return res.json({
-            message: "User Registerd"
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                message: "Name, email and password are required"
+            });
+        }
+
+        const existingUser = await userModel.findOne({ email });
+
+        if (existingUser) {
+            return res.status(409).json({
+                message: "User already exists"
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await userModel.create({
+            name,
+            email,
+            password: hashedPassword
+        });
+
+        return res.status(201).json({
+            message: "User registered successfully"
         });
     } catch (error) {
-        return res.json({
-            message: error
+        console.error("Registration error:", error);
+
+        return res.status(500).json({
+            message: "Registration failed"
         });
     }
 });
+
+
+// app.post("/register", async (req, res) => {
+//     try {
+//         const { name, email, password } = req.body;
+//         const hashedPassword = await bcrypt.hash(password,10);
+//         const user = await userModel.create({ name, email, hashedPassword });
+
+//         return res.json({
+//             message: "User Registerd"
+//         });
+//     } catch (error) {
+//         return res.json({
+//             message: error
+//         });
+//     }
+// });
 
 // Login
 app.post("/login", async (req, res) => {
