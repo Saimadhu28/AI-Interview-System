@@ -96,7 +96,7 @@ const userSchema = new mongoose.Schema({
 
 
 
-const userModel = mongoose.model("Users", userSchema);
+const userModel = mongoose.model("Users_DB", userSchema);
 
 
 const InterviewSchema = new mongoose.Schema({
@@ -626,6 +626,8 @@ app.get("/history", verifyUser, async (req, res) => {
 
 
 // start the server
-app.listen(process.env.PORT, () => {
-    console.log("Server started");
-})
+const PORT = process.env.PORT || 8000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
