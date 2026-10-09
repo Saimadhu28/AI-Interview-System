@@ -7,6 +7,7 @@ import multer from 'multer';
 import fs from 'fs';
 import nodemailer from 'nodemailer'
 import { GoogleGenAI } from "@google/genai";
+import bcrypt from 'bcrypt'
 
 dotenv.config();
 
@@ -39,7 +40,10 @@ const app = express();
 
 // use middlewares
 app.use(express.json());
-app.use(cors());
+
+app.use(cors({
+  origin: "*"
+}));
 
 
 const storage = multer.diskStorage({
@@ -150,6 +154,7 @@ const Interview = mongoose.model("Interview", InterviewSchema);
 
 
 
+
 // verify whether the user is from our server
 function verifyUser(req, res, next) {
 
@@ -183,11 +188,20 @@ function verifyUser(req, res, next) {
 //              ROUTES
 
 
+
+app.get("/", (req, res) => {
+    res.json({
+        message: "AI Interview System API is running"
+    });
+});
+
 // Regitser
 app.post("/register", async (req, res) => {
     try {
         const { name, email, password } = req.body;
-        const user = await userModel.create({ name, email, password });
+        const hashedPasswored = bcrypt.hash(password,10);
+        const user = await userModel.create({ name, email, hashe });
+
         return res.json({
             message: "User Registerd"
         });
@@ -206,7 +220,8 @@ app.post("/login", async (req, res) => {
         if (!user) {
             return res.json({ message: "User does not exist" });
         }
-        if (user.password !== password) {
+        const checkpassword = bcrypt.compare(password,user.password)
+        if (!checkpassword) {
             return res.json({ message: "Password not matched" });
         }
         const token = jwt.sign({
