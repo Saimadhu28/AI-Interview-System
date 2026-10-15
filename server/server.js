@@ -41,22 +41,37 @@ const app = express();
 // use middlewares
 app.use(express.json());
 
+// app.use(cors({
+//   origin: "*"
+// }));
+
+
 app.use(cors({
-  origin: "*"
+    origin: process.env.FRONTEND_URL
 }));
 
+    // this i have used locally
+// const storage = multer.diskStorage({
+//     destination: function (req, file, cb) {
+//         cb(null, './uploads');
+//     },
+//     filename: function (req, file, cb) {
+//         return cb(null, `${Date.now()}-${file.originalname}`)
+//     },
+// })
+// const upload = multer({ storage });
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, './uploads');
-    },
-    filename: function (req, file, cb) {
-        return cb(null, `${Date.now()}-${file.originalname}`)
-    },
-})
 
-// create uplaod instance
-const upload = multer({ storage });
+const storage = multer.memoryStorage();
+
+const upload = multer({
+    storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024
+    }
+});
+
+
 
 
 async function connectDB() {
@@ -319,7 +334,9 @@ app.post("/upload", verifyUser, upload.single("resume"), async (req, res) => {
         }
 
         // 3. Read uploaded resume
-        const pdfBytes = fs.readFileSync(req.file.path);
+        // const pdfBytes = fs.readFileSync(req.file.path);
+
+        const pdfBytes = req.file.buffer;
 
         // 4. Generate questions
         const result = await ai.models.generateContent({
