@@ -41,14 +41,14 @@ const app = express();
 // use middlewares
 app.use(express.json());
 
-// app.use(cors({
-//   origin: "*"
-// }));
-
-
 app.use(cors({
-    origin: process.env.FRONTEND_URL
+  origin: "*"
 }));
+
+
+// app.use(cors({
+//     origin: process.env.FRONTEND_URL
+// }));
 
     // this i have used locally
 // const storage = multer.diskStorage({
