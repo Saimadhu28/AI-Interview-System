@@ -268,29 +268,52 @@ app.post("/register", async (req, res) => {
 // });
 
 // Login
+
 app.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await userModel.findOne({ email: email });
+
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Email and password are required"
+            });
+        }
+
+        const user = await userModel.findOne({ email });
+
         if (!user) {
-            return res.json({ message: "User does not exist" });
+            return res.status(401).json({
+                message: "User does not exist"
+            });
         }
-        const checkpassword = await bcrypt.compare(password,user.password)
-        if (!checkpassword) {
-            return res.json({ message: "Password not matched" });
-        }
-        const token = jwt.sign({
-            _id: user._id,
-            // email: user.email,
-            // name: user.name
-        }, process.env.JWT_SECRET);
-        return res.json(
-            { token }
+
+        const checkpassword = await bcrypt.compare(
+            password,
+            user.password
         );
+
+        if (!checkpassword) {
+            return res.status(401).json({
+                message: "Password not matched"
+            });
+        }
+
+        const token = jwt.sign(
+            { _id: user._id },
+            process.env.JWT_SECRET
+        );
+
+        return res.status(200).json({ token });
+
     } catch (error) {
-        return res.json({ error });
+        console.error("Login error:", error);
+
+        return res.status(500).json({
+            message: "Login failed"
+        });
     }
 });
+
 
 // dashboard access
 app.get("/dashboard", verifyUser, async (req, res) => {
